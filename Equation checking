@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Equation Balancer</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1b1f24;--muted:#667085;--accent:#2563eb;--border:#e2e5ea;--err:#b42318;--ok:#067647;--g1:#c7dbff;--g2:#d9ccff;--dot:#c9d1de}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b21;--text:#eceff3;--muted:#9aa3b2;--accent:#6ea0ff;--border:#2a2f38;--err:#ff8a80;--ok:#5fd39a;--g1:#16294f;--g2:#2a1b4d;--dot:#232a36}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(circle at 15% 5%,var(--g1),transparent 45%),radial-gradient(circle at 90% 95%,var(--g2),transparent 45%),radial-gradient(var(--dot) 1px,transparent 1px) 0 0/22px 22px,var(--bg);background-attachment:fixed;color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5}
+#bg{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+main{max-width:640px;margin:0 auto;padding:24px 16px;position:relative;z-index:1}
+h1{font-size:1.6rem;margin:0 0 4px}
+p.sub{color:var(--muted);margin:0 0 20px}
+.card{background:color-mix(in srgb,var(--card) 90%,transparent);backdrop-filter:blur(6px);border:1px solid var(--border);border-radius:14px;padding:16px}
+input{width:100%;font-size:1.1rem;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text)}
+button{margin-top:12px;width:100%;font-size:1rem;padding:12px;border:0;border-radius:10px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.chip{font-size:.85rem;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg);color:var(--text);width:auto;margin:0;font-weight:400}
+#out{margin-top:16px}
+.eq{font-size:1.25rem;overflow-x:auto;word-break:break-word}
+.err{color:var(--err);font-size:1rem}
+.ok{color:var(--ok);font-size:.9rem;margin-top:6px}
+.tip{color:var(--muted);font-size:.85rem;margin-top:16px}
+details{margin-top:14px;border-top:1px solid var(--border);padding-top:10px}
+summary{cursor:pointer;font-weight:600}
+.step{font-size:.95rem;margin:8px 0}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;margin-top:8px;font-size:.95rem}
+th,td{border:1px solid var(--border);padding:6px 12px;text-align:center}
+th{background:var(--bg)}
+.tabs{display:flex;gap:8px;margin-bottom:14px}.tab{margin:0;background:var(--card);color:var(--text);border:1px solid var(--border)}.tab.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.qeq{font-size:1.2rem;line-height:2.6}.qi{width:58px;display:inline-block;padding:6px;font-size:1rem;text-align:center}
+.row{display:flex;gap:8px}#qmsg,#qscore{margin-top:12px}#qscore{color:var(--muted);font-size:.9rem}
+.note{color:var(--muted);font-size:.85rem;margin-top:6px}.keys{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.key{min-width:42px;text-align:center;padding:9px 6px}.lbl{color:var(--muted);font-size:.85rem;margin-top:14px}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<main>
+  <h1>⚗️ Equation Balancer</h1>
+  <p class="sub">Type an unbalanced chemical equation and get it balanced, with steps and a check.</p>
+  <div class="tabs"><button class="tab on" id="t1">Balancer</button><button class="tab" id="t2">Quiz</button></div>
+  <section id="bal">
+  <div class="card">
+    <input id="eq" value="Fe + O2 -> Fe2O3" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Chemical equation">
+    <button id="go">Balance</button>
+    <div id="out"></div>
+    <details><summary>🔣 Tap-to-type keypad</summary><div class="keys" id="keys"></div></details>
+    <div class="lbl">Try an example:</div>
+    <div class="chips" id="chips"></div>
+  </div>
+  </section>
+  <section id="quiz" hidden><div class="card"><b>Balance this equation:</b><div class="qeq" id="qeq"></div><div class="row"><button id="qcheck">Check</button><button id="qshow" class="tab">Answer</button><button id="qnext" class="tab">Next</button></div><div id="qmsg"></div><div id="qscore">Score: 0 / 0 (first try)</div></div></section>
+  <p class="tip" id="tip">Tip: capital letters don't matter (<b>fe + o2 -> fe2o3</b> works). Charges: <b>Fe3+</b>, <b>H+</b>, <b>OH-</b>, or <b>SO4^2-</b>. Electrons: <b>e-</b>. State symbols like (aq) are ignored. Or use the keypad.</p>
+</main>
+<script>
+const gcd=(a,b)=>b?gcd(b,a%b):Math.abs(a);
+const lcm=(a,b)=>a/gcd(a,b)*b;
+const SYM=new Set("H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og".split(' '));
+
+function parseFormula(f){
+  const total={};
+  for(const part of f.split(/[·*.]/).filter(Boolean)){
+    const m=part.match(/^(\d+)(.*)$/);
+    const mult=m?+m[1]:1, body=m?m[2]:part;
+    const c=parseGroup(body);
+    for(const k in c) total[k]=(total[k]||0)+c[k]*mult;
+  }
+  return total;
+}
+function parseGroup(s){
+  const stack=[{}];let i=0;
+  const num=()=>{let j=i;while(i<s.length&&/\d/.test(s[i]))i++;return i>j?+s.slice(j,i):1};
+  while(i<s.length){
+    const ch=s[i];
+    if(ch==='('||ch==='['){stack.push({});i++;}
+    else if(ch===')'||ch===']'){
+      i++;const n=num();const top=stack.pop();
+      if(!stack.length) throw new Error('Brackets do not match in "'+s+'".');
+      for(const k in top) stack[stack.length-1][k]=(stack[stack.length-1][k]||0)+top[k]*n;
+    } else if(/[A-Z]/.test(ch)){
+      let j=i+1;while(j<s.length&&/[a-z]/.test(s[j]))j++;
+      const el=s.slice(i,j);i=j;const n=num();
+      if(!SYM.has(el)) throw new Error('"'+el+'" is not an element symbol. Symbols are case-sensitive (Co = cobalt, CO = carbon monoxide).');
+      stack[stack.length-1][el]=(stack[stack.length-1][el]||0)+n;
+    } else throw new Error('Unexpected character "'+ch+'" in "'+s+'". Write charges like Fe^2+ or MnO4^-.');
+  }
+  if(stack.length!==1) throw new Error('Brackets do not match in "'+s+'".');
+  return stack[0];
+}
+function parseSpecies(s){
+  let f=s,q=0;
+  const m=s.match(/^(.*?)\^(\d*)([pm])$/);
+  if(m){f=m[1];q=(m[2]?+m[2]:1)*(m[3]==='p'?1:-1);}
+  else if(s==='e-'){f='e';q=-1;}
+  if(f==='e') return{comp:{},charge:q||-1};
+  if(!f) throw new Error('There is an empty compound next to a "+".');
+  return{comp:parseFormula(f),charge:q};
+}
+
+const fr=(n,d=1)=>{if(d<0){n=-n;d=-d}const g=gcd(n,d)||1;return[n/g,d/g]};
+const add=(a,b)=>fr(a[0]*b[1]+b[0]*a[1],a[1]*b[1]);
+const mul=(a,b)=>fr(a[0]*b[0],a[1]*b[1]);
+const div=(a,b)=>fr(a[0]*b[1],a[1]*b[0]);
+const letter=i=>i<26?String.fromCharCode(97+i):'n'+i;
+
+function segs(w){
+  if(!w) return [''];
+  const o=[];
+  for(const n of [1,2]){const t=w.slice(0,n);if(t.length<n)continue;const y=t[0].toUpperCase()+t.slice(1);if(SYM.has(y))for(const r of segs(w.slice(n)))o.push(y+r)}
+  return o;
+}
+function cands(name){
+  try{parseSpecies(name);return[name]}catch(e){}
+  const m=name.match(/^(.*?)(\^\d*[pm])$/),b=m?m[1]:name,suf=m?m[2]:'';
+  let out=[''];
+  b.split(/([A-Za-z]+)/).forEach((p,i)=>{
+    const o=[];
+    for(const a of out)for(const x of(i%2?segs(p.toLowerCase()):[p]))o.push(a+x);
+    out=o.slice(0,30);
+  });
+  out=out.filter(Boolean);
+  return out.length?out.slice(0,12).map(x=>x+suf):[name];
+}
+function pre(s){
+  s=s.replace(/[₀-₉]/g,c=>c.charCodeAt(0)-8320).replace(/[−–]/g,'-').replace(/\((s|l|g|aq)\)/g,'')
+   .replace(/(^|[\s+=>→⟶])([A-Za-z0-9()\[\]]+)([+-])(?=\s*(?:$|[+=→⟶-]))/g,(m,b,f,g)=>{
+     const [,c,r]=f.match(/^(\d*)(.*)$/);
+     return b+c+(/^(H|Li|Na|K|Mg|Ca|Ba|Sr|Al|Fe|Cu|Zn|Ag|Pb|Sn|Mn|Cr|Co|Ni|Hg|Cl|Br|I|F|O|S|N)\d$/i.test(r)?r.slice(0,-1)+'^'+r.slice(-1):r+'^')+g});
+  return s.replace(/\^(\d*)([+-])/g,(m,d,sg)=>'^'+d+(sg==='+'?'p':'m')).replace(/→|⟶|=>|-->|->/g,'=');
+}
+function balance(input){
+  const sides=pre(input).split('=');
+  if(sides.length!==2) throw new Error('Put exactly one arrow (->) or = between the reactants and products.');
+  const split=t=>t.split('+').map(x=>x.replace(/\s+/g,'').replace(/^\d+(?=[A-Za-z(\[])/,'')).filter(Boolean);
+  const L=split(sides[0]),R=split(sides[1]);
+  if(!L.length||!R.length) throw new Error('Both sides of the arrow need at least one compound.');
+  const nL=L.length,all=[...L,...R];
+  let combos=[[]],first=null;
+  for(const c of all.map(cands)){const n=[];for(const p of combos)for(const x of c)if(n.length<400)n.push([...p,x]);combos=n}
+  for(const cb of combos){
+    try{const r=solve(cb,nL);r.fixed=cb.some((x,i)=>x!==all[i]);return r}
+    catch(e){if(!first)first=e}
+  }
+  throw first;
+}
+function solve(names,nL){
+  const info=names.map(parseSpecies);
+  const elems=[...new Set(info.flatMap(i=>Object.keys(i.comp)))];
+  for(const e of elems){
+    const inL=info.slice(0,nL).some(i=>i.comp[e]), inR=info.slice(nL).some(i=>i.comp[e]);
+    if(!inL||!inR) throw new Error('The element '+e+' appears on only one side, so atoms would be created or destroyed. Check for a missing compound or a typo.');
+  }
+  const rowsDef=elems.map(e=>({label:e,val:i=>info[i].comp[e]||0}));
+  if(info.some(i=>i.charge!==0)) rowsDef.push({label:'charge',val:i=>info[i].charge});
+  const rows=rowsDef.length,cols=names.length;
+  const M=rowsDef.map(r=>names.map((_,j)=>fr(r.val(j)*(j<nL?1:-1))));
+  const pivots=[];let r=0;
+  for(let c=0;c<cols&&r<rows;c++){
+    let p=-1;for(let i=r;i<rows;i++)if(M[i][c][0]!==0){p=i;break}
+    if(p<0)continue;
+    [M[r],M[p]]=[M[p],M[r]];
+    const pv=M[r][c];M[r]=M[r].map(x=>div(x,pv));
+    for(let i=0;i<rows;i++)if(i!==r&&M[i][c][0]!==0){
+      const f=M[i][c];M[i]=M[i].map((x,k)=>add(x,mul(f,[-M[r][k][0],M[r][k][1]])));
+    }
+    pivots.push(c);r++;
+  }
+  const free=[...Array(cols).keys()].filter(c=>!pivots.includes(c));
+  if(free.length===0) throw new Error('This cannot be balanced: the only mathematical answer is all zeros. Usually this means a typo in a formula, a missing compound, or charges that do not add up.');
+  if(free.length>4) throw new Error('Too many reactions combined in one equation. Balance them separately.');
+  let T=[[]];for(const _ of free){const n=[];for(const t of T)for(let v=1;v<=5;v++)n.push([...t,v]);T=n}
+  T.sort((a,b)=>a.reduce((x,y)=>x+y)-b.reduce((x,y)=>x+y));
+  for(const t of T){
+    const sol=Array(cols).fill(null).map(()=>fr(0));
+    free.forEach((c,j)=>{sol[c]=fr(t[j])});
+    pivots.forEach((pc,i)=>{let a=fr(0);free.forEach((c,j)=>{a=add(a,mul(M[i][c],fr(t[j])))});sol[pc]=fr(-a[0],a[1])});
+    let L2=1;sol.forEach(x=>L2=lcm(L2,x[1]));
+    let ints=sol.map(x=>x[0]*(L2/x[1]));
+    const g=ints.reduce((a,b)=>gcd(a,b),0);ints=ints.map(x=>x/g);
+    if(ints.every(x=>x>0)) return{names,nL,coef:ints,rowsDef,multi:free.length>1?free.length:0};
+  }
+  throw new Error('No solution with all-positive coefficients. A compound is probably on the wrong side of the arrow, or a formula is wrong.');
+}
+
+function subs(f){return f.replace(/(\d+)/g,(m,d,off,str)=>{const p=str[off-1];return(off===0||p==='·'||p==='*'||p==='.')?m:'<sub>'+m+'</sub>'})}
+function pretty(n){
+  if(n==='e-') return 'e<sup>−</sup>';
+  const m=n.match(/^(.*?)\^(\d*)([pm])$/);
+  let f=n,sup='';
+  if(m){f=m[1];sup=(m[2]||'')+(m[3]==='p'?'+':'−');}
+  if(f==='e') return 'e<sup>−</sup>';
+  return subs(f)+(sup?'<sup>'+sup+'</sup>':'');
+}
+const fmt=(names,labels)=>names.map((n,i)=>(labels[i]?labels[i]+' ':'')+pretty(n)).join(' + ');
+
+function render(res){
+  const{names,nL,coef,rowsDef}=res;
+  const co=coef.map(c=>c>1?c:'');
+  const eq=fmt(names.slice(0,nL),co.slice(0,nL))+' → '+fmt(names.slice(nL),co.slice(nL));
+  const lets=names.map((_,i)=>letter(i));
+  const expr=(idxs,r)=>idxs.filter(i=>r.val(i)!==0).map(i=>{const v=r.val(i),a=Math.abs(v);return(v<0?'−':'')+(a===1?'':a)+lets[i]}).join(' + ').replace(/\+ −/g,'− ')||'0';
+  const L=[...Array(nL).keys()],R=names.map((_,i)=>i).slice(nL);
+  const eqLines=rowsDef.map(r=>'<b>'+r.label+'</b>: '+expr(L,r)+' = '+expr(R,r)).join('<br>');
+  const vals=lets.map((l,i)=>l+' = '+coef[i]).join(', ');
+  const side=(idxs,r)=>idxs.reduce((a,i)=>a+coef[i]*r.val(i),0);
+  const fm=v=>String(v).replace('-','−');
+  const table='<div class="scroll"><table><tr><th></th><th>Left</th><th>Right</th><th></th></tr>'+rowsDef.map(r=>{const a=side(L,r),b=side(R,r);return'<tr><td>'+r.label+'</td><td>'+fm(a)+'</td><td>'+fm(b)+'</td><td>'+(a===b?'✓':'✗')+'</td></tr>'}).join('')+'</table></div>';
+  return'<div class="eq">'+eq+'</div><div class="ok">✓ Balanced</div>'+(res.fixed?'<div class="note">Capital letters were auto-corrected.</div>':'')+(res.multi?'<div class="note">This is really '+res.multi+' reactions combined, so other balances are also valid. One valid answer is shown.</div>':'')
+   +'<details><summary>Show steps</summary>'
+   +'<div class="step"><b>1.</b> Give each species a coefficient:<br>'+fmt(names.slice(0,nL),lets.slice(0,nL))+' → '+fmt(names.slice(nL),lets.slice(nL))+'</div>'
+   +'<div class="step"><b>2.</b> Each element (and the total charge, if there are ions) must be equal on both sides:<br>'+eqLines+'</div>'
+   +'<div class="step"><b>3.</b> Solve, then scale to the smallest whole numbers:<br>'+vals+'</div>'
+   +'<div class="step"><b>4.</b> Check by counting:</div>'+table+'</details>';
+}
+
+// UI
+function run(q){
+  const out=document.getElementById('out');
+  try{out.innerHTML=render(balance(document.getElementById('eq').value))}
+  catch(e){out.innerHTML=q?'':'<div class="err">'+e.message+'</div>'}
+}
+document.getElementById('go').onclick=()=>run();
+document.getElementById('eq').addEventListener('keydown',e=>{if(e.key==='Enter')run()});
+document.getElementById('eq').addEventListener('input',()=>run(true));
+const eqI=document.getElementById('eq');
+function ins(t){const s=eqI.selectionStart??eqI.value.length,e=eqI.selectionEnd??s;eqI.value=eqI.value.slice(0,s)+t+eqI.value.slice(e);const p=s+t.length;eqI.setSelectionRange(p,p);run(true)}
+['H','C','N','O','F','Na','Mg','Al','Si','P','S','Cl','K','Ca','Mn','Fe','Cu','Zn','Br','Ag','I','Cr','0','1','2','3','4','5','6','7','8','9','(',')',' + ',' -> ','^','e-','⌫','Clear'].forEach(k=>{
+  const b=document.createElement('button');b.className='chip key';b.textContent=k.trim();
+  b.onclick=()=>{
+    if(k==='Clear'){eqI.value='';run(true)}
+    else if(k==='⌫'){let s=eqI.selectionStart??eqI.value.length;const e=eqI.selectionEnd??s;if(s===e&&s>0)s--;eqI.value=eqI.value.slice(0,s)+eqI.value.slice(e);eqI.setSelectionRange(s,s);run(true)}
+    else ins(k)};
+  document.getElementById('keys').appendChild(b);
+});
+['Fe + O2 -> Fe2O3','C3H8 + O2 -> CO2 + H2O','Ca(OH)2 + H3PO4 -> Ca3(PO4)2 + H2O','MnO4^- + Fe^2+ + H^+ -> Mn^2+ + Fe^3+ + H2O','Cr2O7^2- + H^+ + e^- -> Cr^3+ + H2O'].forEach(s=>{
+  const b=document.createElement('button');b.className='chip';b.textContent=s;
+  b.onclick=()=>{document.getElementById('eq').value=s;run()};
+  document.getElementById('chips').appendChild(b);
+});
+const QZ=['H2 + O2 -> H2O','Na + Cl2 -> NaCl','N2 + H2 -> NH3','CH4 + O2 -> CO2 + H2O','Al + O2 -> Al2O3','KClO3 -> KCl + O2','Fe + O2 -> Fe2O3','C3H8 + O2 -> CO2 + H2O','Al + HCl -> AlCl3 + H2','Ca(OH)2 + H3PO4 -> Ca3(PO4)2 + H2O','MnO4^- + Fe^2+ + H^+ -> Mn^2+ + Fe^3+ + H2O'];
+const $=id=>document.getElementById(id);
+let cur,tried,score=0,total=0,lastQ=-1;
+function nextQ(){
+  let k;do{k=Math.floor(Math.random()*QZ.length)}while(k===lastQ);lastQ=k;cur=balance(QZ[k]);tried=false;
+  $('qeq').innerHTML=cur.names.map((n,i)=>(i?(i===cur.nL?' → ':' + '):'')+'<input class="qi" type="number" min="1" inputmode="numeric"> '+pretty(n)).join('');
+  $('qmsg').innerHTML='';
+}
+function upd(ok){if(!tried){tried=true;total++;if(ok)score++}$('qscore').textContent='Score: '+score+' / '+total+' (first try)'}
+function qcheck(){
+  const v=[...document.querySelectorAll('.qi')].map(x=>+x.value);
+  if(v.some(x=>!x||x<1)){$('qmsg').innerHTML='<span class="err">Fill every box with a whole number.</span>';return}
+  const{coef,rowsDef,nL}=cur;
+  const bad=rowsDef.filter(r=>v.reduce((a,c,i)=>a+c*r.val(i)*(i<nL?1:-1),0)!==0).map(r=>r.label);
+  if(bad.length){$('qmsg').innerHTML='<span class="err">Not balanced yet. Recount: '+bad.join(', ')+'</span>';upd(false);return}
+  const same=v.every((x,i)=>x===coef[i]);
+  $('qmsg').innerHTML='<span class="ok">'+(same?'✓ Correct!':'✓ Balanced, but not the smallest numbers. Divide by the common factor.')+'</span>';
+  upd(same);
+}
+function qshow(){
+  const{names,nL,coef}=cur,co=coef.map(c=>c>1?c:'');
+  $('qmsg').innerHTML='Answer: '+fmt(names.slice(0,nL),co.slice(0,nL))+' → '+fmt(names.slice(nL),co.slice(nL));
+  upd(false);
+}
+function tab(q){
+  $('bal').hidden=q;$('quiz').hidden=!q;$('tip').hidden=q;
+  $('t1').classList.toggle('on',!q);$('t2').classList.toggle('on',q);
+  if(q&&!cur)nextQ();
+}
+$('t1').onclick=()=>tab(false);$('t2').onclick=()=>tab(true);
+$('qcheck').onclick=qcheck;$('qnext').onclick=nextQ;$('qshow').onclick=qshow;
+const cv=document.getElementById('bg'),cx=cv.getContext('2d');
+let W,H,P=[],mx=-999,my=-999;
+const EL=[['H','#60a5fa',7],['O','#f87171',10],['C','#9ca3af',9],['N','#a78bfa',9],['Na','#fbbf24',11],['Cl','#34d399',11]];
+function size(){W=cv.width=innerWidth;H=cv.height=innerHeight}
+function atom(x,y){const e=EL[Math.random()*EL.length|0];P.push({x,y,vx:(Math.random()-.5)*.8,vy:(Math.random()-.5)*.8,s:e[0],c:e[1],r:e[2]+5})}
+size();for(let i=0;i<Math.min(45,W*H/16000|0);i++)atom(Math.random()*W,Math.random()*H);
+addEventListener('resize',size);
+addEventListener('pointermove',e=>{mx=e.clientX;my=e.clientY});
+addEventListener('pointerup',()=>{mx=my=-999});
+addEventListener('pointerdown',e=>{mx=e.clientX;my=e.clientY;for(let i=0;i<3;i++)atom(mx,my);if(P.length>90)P.splice(0,P.length-90)});
+function tick(){
+  cx.clearRect(0,0,W,H);cx.textAlign='center';cx.textBaseline='middle';cx.font='11px system-ui';
+  for(const a of P){
+    const dx=a.x-mx,dy=a.y-my,d=Math.hypot(dx,dy);
+    if(d<130&&d>0){a.vx+=dx/d*.18;a.vy+=dy/d*.18}
+    a.vx=(a.vx+(Math.random()-.5)*.03)*.992;a.vy=(a.vy+(Math.random()-.5)*.03)*.992;
+    const v=Math.hypot(a.vx,a.vy);if(v>2.2){a.vx*=2.2/v;a.vy*=2.2/v}
+    a.x+=a.vx;a.y+=a.vy;
+    if(a.x<0||a.x>W)a.vx*=-1;if(a.y<0||a.y>H)a.vy*=-1;
+  }
+  cx.lineWidth=1.5;
+  for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++){
+    const d=Math.hypot(P[i].x-P[j].x,P[i].y-P[j].y);
+    if(d<110){cx.strokeStyle='rgba(120,140,180,'+(.45*(1-d/110))+')';cx.beginPath();cx.moveTo(P[i].x,P[i].y);cx.lineTo(P[j].x,P[j].y);cx.stroke()}
+  }
+  for(const a of P){cx.fillStyle=a.c+'88';cx.beginPath();cx.arc(a.x,a.y,a.r,0,7);cx.fill();cx.fillStyle='#fff';cx.fillText(a.s,a.x,a.y)}
+  requestAnimationFrame(tick);
+}
+if(!matchMedia('(prefers-reduced-motion:reduce)').matches)tick();
+run();
+</script>
+</body>
+</html>
